@@ -135,10 +135,10 @@ async def test_podcast(ctx):
             )
             return
         # Create the Stage channel
+        # Fixed: removed unsupported topic argument
         try:
             stage = await guild.create_stage_channel(
                 name="بودكاست",
-                topic="بودكاست السيرفر",
                 reason=f"Podcast started by {ctx.author}"
             )
             podcast_stages[guild.id] = stage.id
@@ -160,8 +160,7 @@ async def test_podcast(ctx):
             if error.code == 50024:
                 message = (
                     "ديسكورد رفض إنشاء Stage بهذا النوع من القنوات. "
-                    "تأكد أن السيرفر مفعّل فيه Community، "
-                    "ثم جرّب مرة ثانية."
+                    "تحقق من إعدادات السيرفر ومتطلبات Community."
                 )
             elif error.code == 50013:
                 message = (
@@ -200,9 +199,7 @@ async def test_podcast(ctx):
                         )
                     )
                     success += 1
-                except discord.Forbidden:
-                    failed += 1
-                except discord.HTTPException:
+                except (discord.Forbidden, discord.HTTPException):
                     failed += 1
                 # Reduce request frequency
                 await asyncio.sleep(0.5)
@@ -253,7 +250,9 @@ async def finish_podcast(ctx):
         stage = find_podcast_stage(guild)
         if stage is None:
             podcast_stages.pop(guild.id, None)
-            await ctx.send("ما فيه ستيج باسم بودكاست موجود.")
+            await ctx.send(
+                "ما فيه ستيج باسم بودكاست موجود."
+            )
             return
         # Check the bot's permissions
         me = guild.me
@@ -281,14 +280,18 @@ async def finish_podcast(ctx):
             )
             podcast_stages.pop(guild.id, None)
             # No private messages are sent by this command
-            await ctx.send("تم حذف ستيج البودكاست.")
+            await ctx.send(
+                "تم حذف ستيج البودكاست."
+            )
             logger.info(
                 "Podcast stage deleted in guild %s",
                 guild.id
             )
         except discord.NotFound:
             podcast_stages.pop(guild.id, None)
-            await ctx.send("الستيج محذوف بالفعل.")
+            await ctx.send(
+                "الستيج محذوف بالفعل."
+            )
         except discord.Forbidden:
             await ctx.send(
                 "ديسكورد رفض حذف الستيج. تحقق من صلاحيات البوت."
@@ -313,7 +316,9 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
     if isinstance(error, commands.NoPrivateMessage):
-        await ctx.send("الأمر هذا يعمل داخل السيرفر فقط.")
+        await ctx.send(
+            "الأمر هذا يعمل داخل السيرفر فقط."
+        )
         return
     if isinstance(error, commands.MissingPermissions):
         await ctx.send(
@@ -326,7 +331,9 @@ async def on_command_error(ctx, error):
         )
         return
     if isinstance(error, commands.CommandOnCooldown):
-        await ctx.send("انتظر قليلًا ثم حاول مرة ثانية.")
+        await ctx.send(
+            "انتظر قليلًا ثم حاول مرة ثانية."
+        )
         return
     original = getattr(error, "original", error)
     logger.error(
