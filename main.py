@@ -1,16 +1,19 @@
 
 import os
 import logging
+import threading
 from urllib.parse import urlparse
 
 import discord
 from discord import app_commands
 from discord.ext import commands
+from flask import Flask, jsonify
 
 # ==================== CONFIG ====================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
+PORT = int(os.getenv("PORT", "10000"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
@@ -19,11 +22,30 @@ logging.basicConfig(
 )
 log = logging.getLogger("delte-bot")
 
+# ==================== WEB SERVER ====================
+
+app = Flask(__name__)
+
+
+@app.get("/")
+def home():
+    return "Delte Bot is Online!", 200
+
+
+@app.get("/health")
+def health():
+    return jsonify(status="ok", bot_ready=bot.is_ready()), 200
+
+
+def run_web():
+    app.run(host="0.0.0.0", port=PORT, use_reloader=False)
+
+
+# ==================== DISCORD BOT ====================
+
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="+", intents=intents)
 
-
-# ==================== HELPERS ====================
 
 def validate_url(value: str) -> bool:
     try:
@@ -38,8 +60,6 @@ def validate_url(value: str) -> bool:
         return False
 
 
-# ==================== EVENTS ====================
-
 @bot.event
 async def on_ready():
     log.info("Connected as %s", bot.user)
@@ -47,6 +67,7 @@ async def on_ready():
     try:
         if GUILD_ID and GUILD_ID.isdigit():
             guild = discord.Object(id=int(GUILD_ID))
+            bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
             log.info("Synced %s guild commands", len(synced))
         else:
@@ -56,18 +77,11 @@ async def on_ready():
         log.exception("Slash command sync failed")
 
 
-@bot.event
-async def on_error(event, *args, **kwargs):
-    log.exception("Unhandled event error: %s", event)
-
-
-# ==================== COMMANDS ====================
-
 @bot.tree.command(
     name="delte",
     description="فحص رابط LootLabs وتجهيزه للفتح",
 )
-@app_commands.describe(url="رابط LootLabs")
+@app_commands.describe(url="ضع رابط LootLabs هنا")
 @app_commands.checks.cooldown(1, 5.0)
 async def delte(interaction: discord.Interaction, url: str):
     url = url.strip()
@@ -88,14 +102,13 @@ async def delte(interaction: discord.Interaction, url: str):
     embed = discord.Embed(
         title="تم فحص الرابط",
         description=(
-            "الرابط من النطاق المتوقع، لكن هذا لا يثبت سلامة محتواه.\n\n"
+            "تم التحقق من صيغة الرابط.\n\n"
             "افتح الرابط وأكمل الخطوات المطلوبة في المتصفح. "
-            "هذا البوت لا يتجاوز المهام أو الإعلانات ولا يستخرج "
-            "الرابط النهائي تلقائيًا دون تكامل رسمي."
+            "لا ينفذ البوت مهام الإعلانات تلقائيًا."
         ),
         color=discord.Color.blurple(),
     )
-    embed.add_field(name="الرابط", value=f"[فتح LootLabs]({url})")
+    embed.add_field(name="فتح الرابط", value=f"[LootLabs]({url})")
     embed.set_footer(text="Delte Bot")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -113,7 +126,7 @@ async def delte_error(
             "Command failed",
             exc_info=(type(error), error, error.__traceback__),
         )
-        message = "حدث خطأ غير متوقع. راجع سجلات Render."
+        message = "حدث خطأ. راجع سجلات Render."
 
     if interaction.response.is_done():
         await interaction.followup.send(message, ephemeral=True)
@@ -123,9 +136,11 @@ async def delte_error(
 
 # ==================== START ====================
 
-if not TOKEN:
-    raise RuntimeError(
-        "متغير DISCORD_TOKEN غير موجود في إعدادات Environment Variables"
-    )
+if __name__ == "__main__":
+    if not TOKEN:
+        raise RuntimeError(
+            "أضف DISCORD_TOKEN في Environment Variables"
+        )
 
-bot.run(TOKEN, log_handler=None)
+    threading.Thread(target=run_web, daemon=True).start()
+    bot.run(TOKEN)
